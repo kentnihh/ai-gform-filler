@@ -48,17 +48,30 @@ class FormParser:
 
     def _detect_type_and_options(self, block) -> tuple[QuestionType, List[str]]:
         # Checkbox
-        checkboxes = block.query_selector_all('div[role="checkbox"]')
+        checkboxes = block.query_selector_all('[role="checkbox"]')
         if checkboxes:
-            opts = [cb.get_attribute("data-value") or cb.inner_text().strip() for cb in checkboxes]
-            return QuestionType.CHECKBOXES, [o for o in opts if o]
+            opts = [
+                (cb.get_attribute("data-answer-value")
+                 or cb.get_attribute("aria-label")
+                 or cb.inner_text()).strip()
+                for cb in checkboxes
+            ]
+            # buang opsi "Yang lain" internal Google (__other_option__) dari daftar options resmi
+            return QuestionType.CHECKBOXES, [o for o in opts if o and o != "__other_option__"]
 
         # Radio (Multiple Choice or Linear Scale)
-        radios = block.query_selector_all('div[role="radio"]')
+        radios = block.query_selector_all('[role="radio"]')
         if radios:
-            opts = [r.get_attribute("data-value") or r.inner_text().strip() for r in radios]
-            # Jika opsi berisi angka sequential, treat as linear scale / radio
-            return QuestionType.MULTIPLE_CHOICE, [o for o in opts if o]
+            opts = [
+                (r.get_attribute("data-answer-value")
+                 or r.get_attribute("data-value")
+                 or r.get_attribute("aria-label")
+                 or r.inner_text()).strip()
+                for r in radios
+            ]
+            is_scale = all(o.isdigit() for o in opts if o)
+            q_type = QuestionType.LINEAR_SCALE if is_scale else QuestionType.MULTIPLE_CHOICE
+            return q_type, [o for o in opts if o and o != "__other_option__"]
 
         # Dropdown
         dropdown = block.query_selector('div[role="listbox"]')

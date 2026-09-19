@@ -4,11 +4,25 @@ from playwright.sync_api import Page
 from app.models import Question, QuestionType
 from app.logger import logger
 
+from typing import List, Tuple, Any
+
 class FormParser:
-    def __init__(self, page: Page):
+    """Parses a Google Form DOM to extract question details and structure."""
+    
+    def __init__(self, page: Page) -> None:
+        """Initializes the FormParser.
+        
+        Args:
+            page (Page): An active Playwright Page instance pointing to the form.
+        """
         self.page = page
 
     def parse(self) -> List[Question]:
+        """Scans the DOM and extracts all questions.
+        
+        Returns:
+            List[Question]: A list of parsed Question objects representing the form structure.
+        """
         logger.info("Mulai melakukan parsing Google Form...")
         self.page.wait_for_selector('div[role="listitem"]', timeout=10000)
         
@@ -46,7 +60,15 @@ class FormParser:
         logger.info(f"Berhasil mengidentifikasi {len(questions)} pertanyaan.")
         return questions
 
-    def _detect_type_and_options(self, block) -> tuple[QuestionType, List[str]]:
+    def _detect_type_and_options(self, block: Any) -> Tuple[QuestionType, List[str]]:
+        """Analyzes a DOM block to determine the question type and available options.
+        
+        Args:
+            block (Locator/ElementHandle): The Playwright element for the question block.
+            
+        Returns:
+            Tuple[QuestionType, List[str]]: The detected type and a list of valid option strings.
+        """
         # Checkbox
         checkboxes = block.query_selector_all('[role="checkbox"]')
         if checkboxes:

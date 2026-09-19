@@ -217,3 +217,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Scratch files
+note.md
+debug_dom.py
+personal_guide.md

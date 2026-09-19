@@ -1,14 +1,39 @@
 import time
+import random
 from typing import List, Dict, Union
 from playwright.sync_api import Page
 from app.models import Question, QuestionType
 from app.logger import logger
+from tenacity import retry, stop_after_attempt, wait_fixed
+
+def human_delay(min_ms=100, max_ms=500):
+    time.sleep(random.uniform(min_ms/1000.0, max_ms/1000.0))
 
 class FormFiller:
-    def __init__(self, page: Page):
+    """Fills and submits a Google Form using Playwright automation."""
+    
+    def __init__(self, page: Page) -> None:
+        """Initializes the FormFiller.
+        
+        Args:
+            page (Page): An active Playwright Page instance pointing to the loaded form.
+        """
         self.page = page
 
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
     def fill_and_submit(self, questions: List[Question], answers: Dict[str, Union[str, List[str]]]) -> bool:
+        """Fills the form with the provided answers and simulates a human submission.
+        
+        Maps the generated answers to the corresponding DOM elements based on the QuestionType.
+        Uses human-like delays for typing and clicking to avoid bot detection.
+        
+        Args:
+            questions (List[Question]): The list of parsed questions representing the form structure.
+            answers (Dict[str, Union[str, List[str]]]): A mapping of Question IDs to their corresponding answer(s).
+            
+        Returns:
+            bool: True if the submission was successful and the confirmation page was reached, False otherwise.
+        """
         try:
             question_blocks = self.page.query_selector_all(
                 'xpath=//div[@role="listitem"][not(ancestor::div[@role="listitem"])]'
@@ -25,12 +50,16 @@ class FormFiller:
                 if q.type == QuestionType.SHORT_ANSWER:
                     input_elem = block.query_selector('input[type="text"]')
                     if input_elem:
-                        input_elem.fill(str(ans))
+                        input_elem.fill("")
+                        input_elem.type(str(ans), delay=random.randint(20, 80))
+                        human_delay(50, 200)
 
                 elif q.type == QuestionType.PARAGRAPH:
                     textarea_elem = block.query_selector('textarea')
                     if textarea_elem:
-                        textarea_elem.fill(str(ans))
+                        textarea_elem.fill("")
+                        textarea_elem.type(str(ans), delay=random.randint(15, 60))
+                        human_delay(50, 200)
 
                 elif q.type == QuestionType.MULTIPLE_CHOICE:
                     radios = block.query_selector_all('[role="radio"]')
@@ -40,7 +69,8 @@ class FormFiller:
                                or radio.get_attribute("aria-label")
                                or radio.inner_text()).strip()
                         if val.lower() == str(ans).strip().lower():
-                            radio.click()
+                            radio.click(delay=random.randint(30, 100))
+                            human_delay(100, 300)
                             matched = True
                             break
                     if not matched:
@@ -59,7 +89,8 @@ class FormFiller:
                                or cb.inner_text()).strip()
                         if val.lower() in ans_list_norm:
                             if cb.get_attribute("aria-checked") != "true":
-                                cb.click()
+                                cb.click(delay=random.randint(30, 100))
+                                human_delay(150, 400)
                             any_checked = True
                     if not any_checked:
                         unmatched.append((q.id, ans, [
@@ -71,13 +102,14 @@ class FormFiller:
                 elif q.type == QuestionType.DROPDOWN:
                     dropdown = block.query_selector('div[role="listbox"]')
                     if dropdown:
-                        dropdown.click()
-                        time.sleep(0.3)
+                        dropdown.click(delay=random.randint(30, 100))
+                        human_delay(300, 600)
                         option_elems = self.page.query_selector_all('div[role="option"]')
                         matched = False
                         for opt in option_elems:
                             if opt.inner_text().strip().lower() == str(ans).strip().lower():
-                                opt.click()
+                                opt.click(delay=random.randint(30, 100))
+                                human_delay(100, 300)
                                 matched = True
                                 break
                         if not matched:
@@ -92,7 +124,8 @@ class FormFiller:
                                or item.get_attribute("aria-label")
                                or item.inner_text()).strip()
                         if val == str(ans).strip():
-                            item.click()
+                            item.click(delay=random.randint(30, 100))
+                            human_delay(100, 300)
                             matched = True
                             break
                     if not matched:
@@ -113,7 +146,8 @@ class FormFiller:
                 logger.error("Tombol Submit tidak ditemukan.")
                 return False
 
-            submit_btn.click()
+            human_delay(500, 1000)
+            submit_btn.click(delay=random.randint(30, 100))
 
             # VERIFIKASI SUNGGUHAN: tunggu halaman konfirmasi, bukan cuma sleep
             try:
@@ -135,4 +169,4 @@ class FormFiller:
 
         except Exception as e:
             logger.error(f"Error saat mengisi form: {str(e)}")
-            return False
+            raise e

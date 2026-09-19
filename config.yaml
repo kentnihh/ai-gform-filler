@@ -1,0 +1,16 @@
+demographics:
+  genders:
+    - Laki-laki
+    - Perempuan
+  frequencies:
+    - Pertama Kali
+    - Jarang
+    - Kadang-kadang
+    - Sering
+    - Sangat Sering
+  attitudes:
+    - Sangat Puas & Kritis
+    - Netral
+    - Cenderung Positif
+    - Cepat Puas
+    - Kritis & Detail

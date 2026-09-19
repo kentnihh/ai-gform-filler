@@ -1,27 +1,22 @@
 import os
-import logging
-from datetime import datetime
+import sys
+from loguru import logger
 
-def setup_logger(name: str = "gform_logger") -> logging.Logger:
+def setup_logger() -> None:
+    """Configures the Loguru logger for the application.
+    
+    Creates a 'logs' directory if it doesn't exist. Sets up a console handler 
+    with a specific format and a file handler that rotates daily at midnight.
+    """
     os.makedirs("logs", exist_ok=True)
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    logger.remove() # Remove default handler
+    
+    log_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    
+    # Console handler
+    logger.add(sys.stderr, format=log_format, level="INFO")
+    
+    # File handler (auto rotating daily)
+    logger.add("logs/app_{time:YYYYMMDD}.log", format=log_format, level="INFO", rotation="00:00")
 
-    if logger.handlers:
-        return logger
-
-    # Log file
-    log_filename = f"logs/app_{datetime.now().strftime('%Y%m%d')}.log"
-    file_handler = logging.FileHandler(log_filename, encoding="utf-8")
-    file_formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s")
-    file_handler.setFormatter(file_formatter)
-    logger.addHandler(file_handler)
-
-    # Console
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(file_formatter)
-    logger.addHandler(console_handler)
-
-    return logger
-
-logger = setup_logger()
+setup_logger()

@@ -16,7 +16,7 @@ class AIAnswerGenerator:
     
     def __init__(self) -> None:
         """Initializes the Ollama client based on config."""
-        self.client = Client(host=Config.OLLAMA_BASE_URL, timeout=60.0)
+        self.client = Client(host=Config.OLLAMA_BASE_URL, timeout=300.0)
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:

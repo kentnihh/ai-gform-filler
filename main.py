@@ -51,7 +51,7 @@ def generate_phase(count: int, questions: List[Question], console: Console):
     console.print(f"[bold cyan]Mulai generate {remaining} responden baru...[/bold cyan]")
     
     ai_gen = AIAnswerGenerator()
-    batch_size = 5
+    batch_size = 3
     total_batches = (remaining + batch_size - 1) // batch_size
     
     with Progress(

@@ -3,7 +3,7 @@ from faker import Faker
 from app.models import Persona
 
 from config import Config
-from data.names import FIRST_NAMES, LAST_NAMES
+from data.names import FIRST_NAMES, LAST_NAMES, OCCUPATIONS
 
 fake = Faker('id_ID')
 
@@ -40,15 +40,27 @@ class PersonaGenerator:
 
         # Generate realistic email based on name
         clean_parts = ["".join(c for c in part.lower() if c.isalnum()) for part in name_parts]
-        email_base = ".".join(clean_parts)
-        
-        # Optional random number
-        if random.random() < 0.5:
-            email_base += str(random.randint(1, 999))
-            
-        email = f"{email_base}@gmail.com"
-        
-        occupation = fake.job()
+        email_pattern = random.choices(["dot", "concat", "underscore", "initial_last"], weights=[50, 30, 10, 10])[0]
+        if email_pattern == "dot":
+            email_base = ".".join(clean_parts)
+        elif email_pattern == "concat":
+            email_base = "".join(clean_parts)
+        elif email_pattern == "underscore":
+            email_base = "_".join(clean_parts)
+        else:  # initial_last
+            email_base = f"{clean_parts[0][0]}.{clean_parts[-1]}" if len(clean_parts) > 1 else clean_parts[0]
+
+        # Realistic digit suffixes: birth year (1985-2005), 2 digit, or none
+        suffix_type = random.choices(["none", "short", "year"], weights=[40, 40, 20])[0]
+        if suffix_type == "year":
+            email_base += str(random.randint(1985, 2005))
+        elif suffix_type == "short":
+            email_base += str(random.randint(11, 99))
+
+        domain = random.choices(["gmail.com", "yahoo.com", "outlook.com"], weights=[88, 9, 3])[0]
+        email = f"{email_base}@{domain}"
+
+        occupation = random.choice(OCCUPATIONS)
         age = random.randint(18, 55)
             
         # Generate a latent score (attitude anchor for statistical generation)

@@ -3,7 +3,7 @@ import random
 import numpy as np
 from typing import List
 from tenacity import retry, stop_after_attempt, wait_exponential
-from ollama import Client
+from openai import OpenAI
 from app.models import Question, Persona, RespondentData, QuestionType
 from config import Config
 from app.logger import logger
@@ -11,29 +11,60 @@ from faker import Faker
 
 fake = Faker('id_ID')
 
+# Jawaban fallback beragam dan natural khas responden Indonesia (Anti-AI Slop, tanpa em-dash)
+HUMAN_FALLBACK_ANSWERS = [
+    "Pelayanan ramah dan tempatnya bersih.",
+    "Rasa makanan oke, tapi waktu tunggu pesanan agak lama pas jam sibuk.",
+    "Porsi pas dan harga terjangkau di kantong.",
+    "Kebersihan meja tolong lebih dijaga setelah tamu selesai makan.",
+    "Enak bgt, sambelnya mantap. Pertahankan rasanya.",
+    "Tempatnya nyaman buat santai, cuma parkir mobil agak susah.",
+    "Semua sudah baik, belum ada komplain.",
+    "Kasirnya tolong ditambah atau dipercepat antriannya pas lagi rame.",
+    "Rasa lumayan enak, cuma AC di ruangan kurang dingin.",
+    "Pilihan menu cukup variatif dan rasa konsisten.",
+    "Pelayanannya cepat dan stafnya responsif.",
+    "Ayamnya empuk bumbunya meresap, recommended.",
+    "Toilet dan wastafel tolong lebih rutin dibersihkan.",
+    "Oke ga ada kendala, pengalaman makan memuaskan.",
+    "Porsinya ngenyangin, staf ramah.",
+    "Makanannya enak, tempat ber-AC nyaman buat kumpul keluarga.",
+]
+
+def sanitize_human_text(text: str) -> str:
+    """Membersihkan teks agar bebas dari AI-slop (em dash, markdown bold, quotes)."""
+    if not isinstance(text, str):
+        return text
+    # R-02: Ganti em-dash dan double-dash dengan koma
+    clean = text.replace("—", ", ").replace("--", ", ").replace("**", "").strip()
+    if (clean.startswith('"') and clean.endswith('"')) or (clean.startswith("'") and clean.endswith("'")):
+        clean = clean[1:-1].strip()
+    return clean
+
 class AIAnswerGenerator:
-    """Handles the batch generation of answers using Ollama API."""
-    
+    """Handles the batch generation of answers via OpenAI-compatible API (Ollama/9Router)."""
+
     def __init__(self) -> None:
-        """Initializes the Ollama client based on config."""
-        self.client = Client(host=Config.OLLAMA_BASE_URL, timeout=300.0)
+        """Initializes the OpenAI-compatible client based on config."""
+        self.client = OpenAI(base_url=Config.LLM_BASE_URL, api_key=Config.LLM_API_KEY or "not-needed")
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """Calls the Ollama LLM with a system and user prompt."""
+        """Calls the LLM with a system and user prompt."""
         try:
-            response = self.client.chat(
+            response = self.client.chat.completions.create(
                 model=Config.MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                format="json",
-                options={"temperature": 0.85}
+                response_format={"type": "json_object"},
+                temperature=0.85,
+                timeout=300.0
             )
-            return response['message']['content']
+            return response.choices[0].message.content or ""
         except Exception as e:
-            logger.error(f"Ollama API Error during _call_llm: {e}")
+            logger.error(f"LLM API Error during _call_llm: {e}")
             raise e
 
     def generate_batch_answers(self, personas: List[Persona], questions: List[Question]) -> List[RespondentData]:
@@ -60,36 +91,27 @@ class AIAnswerGenerator:
         }
 
         system_prompt = (
-            "Anda adalah asisten AI yang mensimulasikan respons untuk sekelompok responden survei.\n"
-            "Tugas Anda adalah menghasilkan list jawaban (answers) untuk masing-masing responden (persona) yang diberikan.\n"
-            "Aturan ketat:\n"
-            "1. Jika pertanyaan memiliki pilihan terbatas, JAWABAN HARUS PERSIS SAMA dengan salah satu string dari array 'options'.\n"
-            "2. Untuk tipe 'checkboxes' (array/list), Anda WAJIB memilih HANYA 1 atau 2 item secara acak. JANGAN PERNAH memilih semua opsi yang tersedia.\n"
-            "3. Untuk tipe pertanyaan teks bebas/paragraf, Anda WAJIB menghasilkan jawaban yang SANGAT unik, realistis, dan beragam berdasarkan persona. JANGAN PERNAH mengulang jawaban standar seperti 'Cukup baik'. Sebagian responden harus mengeluh detail (misal: parkir susah, pelayanan lambat, harga mahal, meja kotor), sebagian memberi pujian spesifik, dan sebagian memberi saran konstruktif. Buat senyata mungkin seperti ulasan pelanggan Indonesia.\n"
-            "4. Output HARUS BERUPA JSON Object dengan key 'batch_answers' yang berisi array of object.\n"
-            "5. Setiap object di dalam array 'batch_answers' harus memiliki key 'idx' yang sesuai dengan idx persona, dan key 'answers' berisi jawaban dari form.\n"
-            f"6. SANGAT PENTING: Setiap 'answers' object WAJIB memiliki SEMUA {len(llm_questions)} key pertanyaan berikut: {[q.id for q in llm_questions]}. JANGAN PERNAH melewatkan atau menghilangkan key manapun.\n"
-            "7. DILARANG KERAS menghasilkan jawaban yang terpotong, tidak lengkap, atau kosong.\n"
-            "Format Output yang Diharapkan:\n"
-            "{\n"
-            "  \"batch_answers\": [\n"
-            "    {\n"
-            "      \"idx\": 0,\n"
-            "      \"answers\": {\n"
-            "        \"q_1\": \"Sangat Setuju\",\n"
-            "        \"q_2\": \"Harga terjangkau, tapi Wi-Fi sering putus saat saya nugas.\"\n"
-            "      }\n"
-            "    },\n"
-            "    {\n"
-            "      \"idx\": 1,\n"
-            "      \"answers\": {\n"
-            "        \"q_1\": \"Tidak Setuju\",\n"
-            "        \"q_2\": \"Pelayanan staf sangat lambat dan area parkir mobil terlalu sempit untuk tamu bisnis.\"\n"
-            "      }\n"
-            "    }\n"
-            "  ]\n"
-            "}\n"
-            "PASTIKAN: Rating kuantitatif (q_1) SEJALAN dengan teks ulasan (q_2). Jika rating buruk, teks harus berisi komplain. Sesuaikan gaya bahasa dengan persona (misal: mahasiswa lebih santai, profesional lebih formal)."
+            "Anda adalah mesin simulasi responden manusia untuk survei Google Form di Indonesia.\n"
+            "Tugas Anda: Menghasilkan jawaban (answers) untuk masing-masing responden (persona) secara realistis, hidup, dan natural.\n\n"
+            "=== ATURAN FORMAT DATA ===\n"
+            "1. Pilihan Terbatas: Jika pertanyaan memiliki 'options', JAWABAN HARUS PERSIS SAMA dengan salah satu string di array 'options'.\n"
+            "2. Checkboxes: WAJIB pilih HANYA 1 atau 2 item secara acak realistis. JANGAN PERNAH memilih semua opsi.\n"
+            "3. Output HARUS JSON Object valid dengan root key 'batch_answers' berisi array of object:\n"
+            "   [{\"idx\": 0, \"answers\": {\"q_1\": \"...\", \"q_2\": \"...\"}}]\n"
+            f"4. SANGAT PENTING: Setiap objek 'answers' WAJIB menyertakan SEMUA {len(llm_questions)} key pertanyaan berikut: {[q.id for q in llm_questions]}.\n\n"
+            "=== ATURAN ANTI-AI SLOP (WAJIB DITERAPKAN) ===\n"
+            "Jawaban teks bebas/paragraf TIDAK BOLEH terbaca seperti buatan AI. Terapkan prinsip berikut:\n"
+            "- DILARANG KERAS menggunakan tanda em dash (— atau --). Gunakan tanda koma, titik, atau tanda kurung biasa.\n"
+            "- DILARANG menggunakan kata-kata klise AI / PR korporat: 'menghadirkan pengalaman luar biasa', 'sinergi', 'revolusioner', 'harmonis', 'ekosistem', 'patut diapresiasi', 'menjadi bukti nyata', 'tak tertandingi', 'secara keseluruhan sangat memuaskan'.\n"
+            "- DILARANG memakai salam pembuka klise ('Sejujurnya menurut saya...', 'Jujur saja...') dan DILARANG memakai salam penutup chatbot ('Semoga masukan ini bermanfaat', 'Terima kasih atas pelayanannya', 'Semoga makin sukses!'). Manusia asli langsung to the point menulis isi ulasan.\n"
+            "- DILARANG formula 'Rule of Three' (memaksakan 3 pujian/keluhan klise seperti 'cepat, bersih, dan ramah'). Fokus pada 1 atau 2 aspek konkret saja.\n"
+            "- HINDARI jawaban seragam. Variasikan panjang dan gaya bahasa sesuai persona:\n"
+            "  * Usia muda / Mahasiswa: santai, wajar memakai kata sehari-hari (tp, bgt, ga, udah, nunggu) atau kalimat ringkas ('enak bgt porsi pas', 'tempat cozy tp wifi agak lemot').\n"
+            "  * Usia dewasa / Pekerja / ASN: kalimat lebih tertata rapi, sopan, to-the-point ('Kualitas makanan baik, mohon kebersihan wastafel ditingkatkan.').\n"
+            "  * Trait 'Kritis & Detail': berikan komplain atau masukan pada hal fisik spesifik (antrean kasir, pendingin ruangan/AC, parkiran sempit, rasa bumbu, kebersihan meja).\n"
+            "  * Trait 'Cepat Puas' / 'Netral': komentar singkat, padat, tidak bertele-tele ('Sudah cukup baik', 'Makanannya enak, ga ada kendala').\n"
+            "- DILARANG memakai format markdown seperti **teks tebal**, bullet points, atau tanda kutip di jawaban teks bebas.\n"
+            "- KONSISTENSI: Rating kuantitatif dan isi ulasan teks harus sejalan secara logis."
         )
 
         user_prompt = f"Hasilkan batch jawaban untuk form ini:\n{json.dumps(prompt_data, ensure_ascii=False)}"
@@ -128,9 +150,15 @@ class AIAnswerGenerator:
 
                         if val is None and q.required:
                             if q.options:
-                                val = q.options[0] if q.type != QuestionType.CHECKBOXES else [q.options[0]]
+                                if q.type == QuestionType.CHECKBOXES:
+                                    # ponytail: uniform random; weight by real distribution when known
+                                    val = random.sample(q.options, min(len(q.options), random.randint(1, 2)))
+                                else:
+                                    val = random.choice(q.options)
                             else:
-                                val = "Cukup baik"
+                                val = random.choice(HUMAN_FALLBACK_ANSWERS)
+                        elif isinstance(val, str) and not q.options:
+                            val = sanitize_human_text(val)
                         cleaned_answers[q.id] = val
                         
                     batch_responses[idx] = cleaned_answers
@@ -163,6 +191,21 @@ class AIAnswerGenerator:
                         answers[q.id] = random.choice(q.options)
                 except Exception as e:
                     answers[q.id] = random.choice(q.options)
+
+            # Fallback untuk soal non-stat saat batch LLM gagal total (P0: jawaban hilang)
+            # ponytail: uniform random; weight by real distribution when known
+            for q in llm_questions:
+                if answers.get(q.id) is not None:
+                    continue
+                if q.options:
+                    if q.type == QuestionType.CHECKBOXES:
+                        answers[q.id] = random.sample(q.options, min(len(q.options), random.randint(1, 2)))
+                    else:
+                        answers[q.id] = random.choice(q.options)
+                elif q.required:
+                    answers[q.id] = random.choice(HUMAN_FALLBACK_ANSWERS)
+                if isinstance(answers.get(q.id), str) and not q.options:
+                    answers[q.id] = sanitize_human_text(answers[q.id])
 
             # Override personal fields
             for q in questions:

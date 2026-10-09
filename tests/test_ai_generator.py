@@ -1,6 +1,7 @@
-import pytest
+import json
 from app.models import Question, QuestionType, Persona
 from app.ai_generator import AIAnswerGenerator
+
 
 def test_persona_generation():
     from app.persona import PersonaGenerator
@@ -11,7 +12,8 @@ def test_persona_generation():
     assert "@" in p.email
     assert 1.0 <= p.latent_score <= 5.0
 
-def test_ai_answer_format(mocker):
+
+def test_ai_batch_format(mocker):
     questions = [
         Question(
             id="q_1",
@@ -28,30 +30,30 @@ def test_ai_answer_format(mocker):
             options=["1", "2", "3", "4", "5"]
         )
     ]
-    persona = Persona(
+    personas = [Persona(
         name="Budi", email="budi@gmail.com",
         age=25, gender="Laki-laki", occupation="Developer",
         usage_frequency="Sering", attitude_trait="Netral",
         latent_score=4.0
-    )
+    )]
 
-    # Mock response LLM (we only ask LLM for non-Likert questions)
-    mock_resp = {
-        "answers": {
-            "q_1": "Puas"
-        }
-    }
-    
+    mock_resp = {"batch_answers": [{"idx": 0, "answers": {"q_1": "Puas"}}]}
+
     generator = AIAnswerGenerator()
-    # Mock the internal LLM call to bypass API completely in tests
-    mocker.patch.object(generator, '_call_llm', return_value=str(mock_resp).replace("'", '"'))
+    mocker.patch.object(generator, '_call_llm', return_value=json.dumps(mock_resp))
 
-    result = generator.generate_answers(1, persona, questions)
-    
-    # Assert LLM parsed answer
-    assert result.answers["q_1"] == "Puas"
-    
-    # Assert programmatic statistical answer
-    assert result.answers["q_2"] in ["1", "2", "3", "4", "5"]
-    # With latent score 4.0, mean is ~4, so it should be highly likely to be 3, 4, or 5
-    assert int(result.answers["q_2"]) >= 2
+    results = generator.generate_batch_answers(personas, questions)
+
+    assert results[0].answers["q_1"] == "Puas"
+    assert results[0].answers["q_2"] in ["1", "2", "3", "4", "5"]
+    assert int(results[0].answers["q_2"]) >= 2
+
+
+def test_sanitize_human_text_anti_slop():
+    from app.ai_generator import sanitize_human_text
+    raw = '— "Tempatnya nyaman — pelayanan ramah banget! **rekomendasi**" —'
+    clean = sanitize_human_text(raw)
+    assert "—" not in clean
+    assert "**" not in clean
+    assert not clean.startswith('"')
+

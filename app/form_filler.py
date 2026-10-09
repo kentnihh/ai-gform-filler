@@ -35,14 +35,19 @@ class FormFiller:
             bool: True if the submission was successful and the confirmation page was reached, False otherwise.
         """
         try:
-            question_blocks = self.page.query_selector_all(
+            all_blocks = self.page.query_selector_all(
                 'xpath=//div[@role="listitem"][not(ancestor::div[@role="listitem"])]'
             )
+            # Filter heading sama seperti FormParser atau jawaban geser (P0)
+            question_blocks = [b for b in all_blocks if b.query_selector('div[role="heading"]')]
             unmatched = []
 
             for idx, q in enumerate(questions):
                 ans = answers.get(q.id)
                 if ans is None:
+                    continue
+                if idx >= len(question_blocks):
+                    unmatched.append((q.id, ans, []))
                     continue
 
                 block = question_blocks[idx]

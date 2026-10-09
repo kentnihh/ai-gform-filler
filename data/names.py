@@ -41,3 +41,25 @@ LAST_NAMES = [
     "Utomo", "Wahyudi", "Wahyuni", "Wardhana", "Wardhani", "Wibisono", "Wibowo", "Wicaksono", "Widiyanto", "Widodo",
     "Widyawati", "Wiguna", "Wijaya", "Winarto", "Wira", "Wirawan", "Wulandari", "Yudhistira", "Yulianti", "Yuniar"
 ]
+
+# Daftar profesi / pekerjaan realistis dalam demografi responden Indonesia
+OCCUPATIONS = [
+    # Pelajar & Mahasiswa
+    "Mahasiswa", "Mahasiswi", "Pelajar SMA",
+    # Karyawan & Pekerja Swasta / Korporat
+    "Karyawan Swasta", "Staf Administrasi", "Staf Akuntansi / Keuangan", "Staf HRD",
+    "Sales / Marketing", "Customer Service", "Digital Marketer", "Content Creator",
+    "Software Engineer", "IT Support", "Desainer Grafis", "Pegawai Bank",
+    "Staf Operasional", "Staf Logistik", "Analis Data", "Admin Olshop",
+    "Resepsionis", "Quality Control",
+    # Pegawai Negeri, Pendidikan, & Layanan Publik
+    "PNS / ASN", "PPPK", "Guru SD/SMP/SMA", "Dosen", "Perangkat Desa",
+    # Kesehatan
+    "Perawat", "Bidan", "Tenaga Medis", "Apoteker",
+    # Wirausaha, Lapangan, & Jasa
+    "Wiraswasta", "Pedagang", "Pemilik Toko", "Pebisnis Online", "Freelancer",
+    "Driver Ojek Online", "Kurir Ekspedisi", "Barista", "Koki / Juru Masak",
+    "Teknisi", "Mekanik Bengkel", "Buruh Pabrik",
+    # Rumah Tangga & Lainnya
+    "Ibu Rumah Tangga", "Pensiunan"
+]

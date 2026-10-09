@@ -15,7 +15,9 @@ class Config:
         HEADLESS (bool): Whether to run the Playwright browser in headless mode.
         PROXY_URL (str): Optional proxy server URL for Playwright.
     """
-    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    # OpenAI-compatible endpoint — Ollama lokal atau 9Router VPS (via Tailscale)
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", ""))
     MODEL: str = os.getenv("MODEL", "llama3.2")
     MIN_DELAY: float = float(os.getenv("MIN_DELAY", "3.0"))
     MAX_DELAY: float = float(os.getenv("MAX_DELAY", "8.0"))

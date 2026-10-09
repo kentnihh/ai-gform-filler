@@ -1,4 +1,3 @@
-import time
 from typing import List
 from playwright.sync_api import Page
 from app.models import Question, QuestionType
@@ -19,25 +18,35 @@ class FormParser:
 
     def parse(self) -> List[Question]:
         """Scans the DOM and extracts all questions.
-        
+
         Returns:
             List[Question]: A list of parsed Question objects representing the form structure.
         """
         logger.info("Mulai melakukan parsing Google Form...")
         self.page.wait_for_selector('div[role="listitem"]', timeout=10000)
-        
-        question_blocks = self.page.query_selector_all('div[role="listitem"]')
+
+        # Top-level blocks only — must match FormFiller's selector or answers misalign (P0)
+        question_blocks = self.page.query_selector_all(
+            'xpath=//div[@role="listitem"][not(ancestor::div[@role="listitem"])]'
+        )
         questions: List[Question] = []
 
-        for idx, block in enumerate(question_blocks):
+        q_num = 0
+        for block in question_blocks:
             # Ambil Judul
             title_elem = block.query_selector('div[role="heading"]')
             if not title_elem:
                 continue
-            title_text = title_elem.inner_text().strip()
-            # Hilangkan asterisk (*) jika pertanyaan wajib
-            required = "*" in title_text
-            clean_title = title_text.replace("*", "").strip()
+            q_num += 1
+            # Judul asli ada di span.M7eMe; inner_text heading termasuk " *" penanda wajib
+            title_span = title_elem.query_selector('.M7eMe')
+            raw_title = (title_span.inner_text() if title_span else title_elem.inner_text()).strip()
+            # Required via marker DOM, bukan "*" di teks (judul bisa mengandung * legitimate)
+            required = (
+                block.query_selector('[aria-required="true"]') is not None
+                or block.query_selector('span[aria-label="Pertanyaan wajib"]') is not None
+            )
+            clean_title = raw_title.replace("*", "").strip()
 
             # Ambil Deskripsi (jika ada)
             desc_elem = block.query_selector('div[id*="desc"]')
@@ -46,7 +55,7 @@ class FormParser:
             # Deteksi Tipe Pertanyaan & Opsi
             q_type, options = self._detect_type_and_options(block)
 
-            q_id = f"q_{idx + 1}"
+            q_id = f"q_{q_num}"
             question = Question(
                 id=q_id,
                 title=clean_title,
@@ -100,7 +109,10 @@ class FormParser:
         if dropdown:
             # Buka dropdown sebentar untuk baca opsi
             dropdown.click()
-            time.sleep(0.3)
+            try:
+                self.page.wait_for_selector('div[role="option"]', timeout=3000)
+            except Exception:
+                pass
             option_elems = self.page.query_selector_all('div[role="option"]')
             opts = [opt.inner_text().strip() for opt in option_elems if opt.inner_text().strip()]
             self.page.keyboard.press("Escape")  # Tutup kembali
